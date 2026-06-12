@@ -1,0 +1,35 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model City {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  lat       Float?
+  lng       Float?
+  createdAt DateTime @default(now())
+  records   AqiRecord[]
+}
+
+model AqiRecord {
+  id        String   @id @default(cuid())
+  cityId    String
+  timestamp DateTime
+  aqi       Int
+  pm25      Float?
+  pm10      Float?
+  tvoc      Float?
+  noise     Float?
+  
+  city      City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@index([cityId, timestamp])
+}

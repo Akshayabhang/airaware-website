@@ -1,0 +1,97 @@
+name: Deploy AirWave to Hostinger
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 1: Build & Test
+  # Runs on GitHub's servers to verify the build works before deploying
+  # ──────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build & Verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Create a minimal .env for the build step (no real secrets needed for build)
+      - name: Create build .env
+        run: |
+          echo "DATABASE_URL=file:./prisma/build.db" >> .env
+          echo "WAQI_API_TOKEN=${{ secrets.WAQI_API_TOKEN }}" >> .env
+          echo "NEXT_PUBLIC_WINDY_API_KEY=${{ secrets.NEXT_PUBLIC_WINDY_API_KEY }}" >> .env
+          echo "INDIAN_WEATHER_API_KEY=${{ secrets.INDIAN_WEATHER_API_KEY }}" >> .env
+          echo "NEXT_PUBLIC_OWM_API_KEY=${{ secrets.NEXT_PUBLIC_OWM_API_KEY }}" >> .env
+
+      # Generate Prisma client (needed before build)
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Build Next.js app
+        run: npm run build
+
+      - name: Confirm standalone output exists
+        run: ls -la .next/standalone/
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 2: Deploy to Hostinger VPS via SSH
+  # NOTE: If you use Hostinger's Managed Node.js (Business/Cloud plan),
+  #       you can DELETE this entire 'deploy' job — Hostinger auto-deploys
+  #       from GitHub when you connect it in hPanel.
+  # ──────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: build
+    # Only deploy on push to main (not on PRs)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to Hostinger VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}         # e.g. 123.45.67.89
+          username: ${{ secrets.VPS_USER }}     # e.g. root or ubuntu
+          key: ${{ secrets.VPS_SSH_KEY }}       # Your private SSH key
+          port: ${{ secrets.VPS_PORT || 22 }}   # Default SSH port
+          script: |
+            set -e
+            
+            echo "=== Pulling latest code ==="
+            cd /var/www/airwave
+            git pull origin main
+            
+            echo "=== Installing dependencies ==="
+            npm ci --production=false
+            
+            echo "=== Generating Prisma client ==="
+            npx prisma generate
+            
+            echo "=== Running database migrations ==="
+            npx prisma db push --skip-generate
+            
+            echo "=== Building the app ==="
+            npm run build
+            
+            echo "=== Restarting app with PM2 ==="
+            pm2 restart airwave || pm2 start npm --name "airwave" -- start
+            pm2 save
+            
+            echo "=== Deployment complete! ==="
+            pm2 status
