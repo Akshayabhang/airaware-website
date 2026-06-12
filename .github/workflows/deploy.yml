@@ -27,10 +27,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Create a minimal .env for the build step (no real secrets needed for build)
+      # Create a minimal .env for the build step
       - name: Create build .env
         run: |
-          echo "DATABASE_URL=file:./prisma/build.db" >> .env
+          echo "TURSO_DATABASE_URL=${{ secrets.TURSO_DATABASE_URL }}" >> .env
+          echo "TURSO_AUTH_TOKEN=${{ secrets.TURSO_AUTH_TOKEN }}" >> .env
           echo "WAQI_API_TOKEN=${{ secrets.WAQI_API_TOKEN }}" >> .env
           echo "NEXT_PUBLIC_WINDY_API_KEY=${{ secrets.NEXT_PUBLIC_WINDY_API_KEY }}" >> .env
           echo "INDIAN_WEATHER_API_KEY=${{ secrets.INDIAN_WEATHER_API_KEY }}" >> .env
