@@ -38,10 +38,11 @@ jobs:
       # Secrets are stored in GitHub → Settings → Secrets and variables → Actions
       - name: Create build .env
         run: |
-          # Database
-          echo "DATABASE_URL=file:./prisma/dev.db" >> .env
+          # Database — Prisma Platform Postgres (set in GitHub Secrets)
+          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> .env
           echo "TURSO_DATABASE_URL=${{ secrets.TURSO_DATABASE_URL }}" >> .env
           echo "TURSO_AUTH_TOKEN=${{ secrets.TURSO_AUTH_TOKEN }}" >> .env
+
 
           # Weather & AQI APIs
           echo "WAQI_API_TOKEN=${{ secrets.WAQI_API_TOKEN }}" >> .env
@@ -73,7 +74,8 @@ jobs:
       # dev.db so the build can reference the schema. Uses migrate deploy (not
       # db push) — this is the production-safe command that runs migration history.
       - name: Apply Prisma migrations
-        run: DATABASE_URL="file:./prisma/dev.db" npx prisma migrate deploy
+        run: npx prisma migrate deploy
+
 
 
       # ── 7. Next.js Build ──────────────────────────────────────────────────────
