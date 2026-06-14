@@ -36,16 +36,28 @@ export async function middleware(request: NextRequest) {
     default-src 'self';
     script-src 'self' 'unsafe-eval' 'unsafe-inline' https://*.windy.com https://*.windy.org https://unpkg.com;
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com;
-    img-src 'self' blob: data: https://*.openstreetmap.org https://*.tile.openstreetmap.org https://*.tile.osm.org https://*.waqi.info https://*.openweathermap.org https://*.windy.com https://*.windy.org https://*.indianapi.in;
+    img-src 'self' blob: data: https://*.openstreetmap.org https://*.tile.openstreetmap.org https://*.tile.osm.org https://*.waqi.info https://*.openweathermap.org https://*.windy.com https://*.windy.org https://*.indianapi.in https://*.googleapis.com https://*.gstatic.com;
     font-src 'self' https://fonts.gstatic.com;
-    connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.waqi.info https://*.waqi.info https://api.openweathermap.org https://*.openweathermap.org https://weather.indianapi.in https://*.windy.com https://*.windy.org https://api.weatherapi.com;
-    frame-src 'self' https://*.windy.com https://*.windy.org;
+    connect-src 'self'
+      https://*.supabase.co wss://*.supabase.co
+      https://api.waqi.info https://*.waqi.info
+      https://api.openweathermap.org https://*.openweathermap.org
+      https://weather.indianapi.in
+      https://*.windy.com https://*.windy.org
+      https://api.weatherapi.com
+      https://identitytoolkit.googleapis.com
+      https://securetoken.googleapis.com
+      https://*.firebaseapp.com
+      https://*.googleapis.com
+      wss://*.firebaseio.com;
+    frame-src 'self' https://*.windy.com https://*.windy.org https://*.firebaseapp.com https://accounts.google.com;
     object-src 'none';
     base-uri 'self';
     form-action 'self';
     frame-ancestors 'none';
     upgrade-insecure-requests;
   `.replace(/\s{2,}/g, ' ').trim();
+
 
   response.headers.set("Content-Security-Policy", cspHeader);
   response.headers.set("X-Frame-Options", "DENY"); // Prevent Clickjacking
