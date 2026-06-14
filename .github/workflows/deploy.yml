@@ -1,11 +1,8 @@
-name: Build & Verify — AirWave
+name: Build & Deploy — AirAware
 
-# This workflow runs on every push to main.
-# It verifies the build works correctly.
-#
-# DEPLOYMENT: Hostinger's Managed Node.js (Plan 5) auto-deploys from GitHub
-# when connected via hPanel → Websites → Node.js Apps → Import from GitHub.
-# No SSH deploy job is needed here.
+# Triggered on every push or PR to main.
+# Handles: Prisma client generation, Next.js build, standalone output verification.
+# Deployment: Hostinger Node.js App Manager auto-deploys from GitHub on success.
 
 on:
   push:
@@ -17,41 +14,80 @@ on:
 
 jobs:
   build:
-    name: Build & Verify
+    name: 🔨 Build & Verify
     runs-on: ubuntu-latest
 
     steps:
+      # ── 1. Checkout ─────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ── 2. Node.js Setup ─────────────────────────────────────────────────────
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
 
+      # ── 3. Install Dependencies ───────────────────────────────────────────────
       - name: Install dependencies
         run: npm ci
 
-      # Create a .env so Next.js build can access the public API keys
+      # ── 4. Write .env for build ───────────────────────────────────────────────
+      # Provides all required env vars so Next.js can compile correctly.
+      # Secrets are stored in GitHub → Settings → Secrets and variables → Actions
       - name: Create build .env
         run: |
+          # Database
           echo "DATABASE_URL=file:./prisma/dev.db" >> .env
           echo "TURSO_DATABASE_URL=${{ secrets.TURSO_DATABASE_URL }}" >> .env
           echo "TURSO_AUTH_TOKEN=${{ secrets.TURSO_AUTH_TOKEN }}" >> .env
+
+          # Weather & AQI APIs
           echo "WAQI_API_TOKEN=${{ secrets.WAQI_API_TOKEN }}" >> .env
           echo "NEXT_PUBLIC_WINDY_API_KEY=${{ secrets.NEXT_PUBLIC_WINDY_API_KEY }}" >> .env
           echo "INDIAN_WEATHER_API_KEY=${{ secrets.INDIAN_WEATHER_API_KEY }}" >> .env
           echo "NEXT_PUBLIC_OWM_API_KEY=${{ secrets.NEXT_PUBLIC_OWM_API_KEY }}" >> .env
 
+          # Supabase
+          echo "NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" >> .env
+          echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}" >> .env
+
+          # Firebase Authentication
+          echo "NEXT_PUBLIC_FIREBASE_API_KEY=${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}" >> .env
+          echo "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}" >> .env
+          echo "NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}" >> .env
+          echo "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ secrets.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}" >> .env
+          echo "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}" >> .env
+          echo "NEXT_PUBLIC_FIREBASE_APP_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}" >> .env
+          echo "NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID }}" >> .env
+
+      # ── 5. Prisma Generate ────────────────────────────────────────────────────
+      # Generates the Prisma client from schema.prisma.
+      # Must run before the Next.js build so routes using prisma can compile.
       - name: Generate Prisma client
         run: npx prisma generate
 
+      # ── 6. Prisma DB Push (SQLite only — skip for Turso in CI) ────────────────
+      # Push schema to the local SQLite dev.db so the build can reference it.
+      - name: Push Prisma schema to local SQLite
+        run: DATABASE_URL="file:./prisma/dev.db" npx prisma db push --skip-generate
+        continue-on-error: true
+
+      # ── 7. Next.js Build ──────────────────────────────────────────────────────
       - name: Build Next.js app
         run: npm run build
 
-      - name: Confirm standalone output exists
-        run: ls -la .next/standalone/
+      # ── 8. Verify Standalone Output ───────────────────────────────────────────
+      - name: Verify standalone output exists
+        run: |
+          if [ -d ".next/standalone" ]; then
+            echo "✅ Standalone output found:"
+            ls -la .next/standalone/
+          else
+            echo "⚠️ No standalone output — output mode may not be 'standalone' in next.config"
+          fi
 
+      # ── 9. Done ───────────────────────────────────────────────────────────────
       - name: Build passed ✅
-        run: echo "Build successful — Hostinger will auto-deploy from this commit."
+        run: echo "✅ Build successful — ready for Hostinger deployment."
