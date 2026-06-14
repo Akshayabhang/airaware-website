@@ -1,32 +1,26 @@
-import { PrismaClient } from '@prisma/client';
-import { PrismaLibSQL } from '@prisma/adapter-libsql';
-import { createClient } from '@libsql/client';
+// lib/prisma.ts — Prisma Client singleton with PrismaPg adapter for Prisma Postgres
+// Import only in server-side code (API routes, server components, scripts).
+// Never import this in browser/client components.
 
-declare global {
-  // eslint-disable-next-line no-var
-  var prisma: PrismaClient | undefined;
+import { PrismaClient } from "../../generated/prisma";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
+
+const connectionString = process.env.DATABASE_URL!;
+
+const createPrismaClient = () => {
+  const pool = new Pool({ connectionString });
+  const adapter = new PrismaPg(pool);
+  return new PrismaClient({ adapter });
+};
+
+// Prevent multiple instances in Next.js hot-reload (dev mode)
+const globalForPrisma = globalThis as unknown as {
+  prisma: ReturnType<typeof createPrismaClient> | undefined;
+};
+
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
 }
-
-function createPrismaClient(): PrismaClient {
-  const tursoUrl = process.env.TURSO_DATABASE_URL;
-  const tursoToken = process.env.TURSO_AUTH_TOKEN;
-
-  // Use Turso cloud DB in production (or when env vars are set)
-  if (tursoUrl && tursoUrl.startsWith('libsql://')) {
-    const libsql = createClient({
-      url: tursoUrl,
-      authToken: tursoToken,
-    });
-    const adapter = new PrismaLibSQL(libsql);
-    return new PrismaClient({ adapter });
-  }
-
-  // Fallback to local SQLite for development
-  return new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query'] : [],
-  });
-}
-
-export const prisma = globalThis.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== 'production') globalThis.prisma = prisma;
