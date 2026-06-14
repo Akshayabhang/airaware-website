@@ -68,11 +68,13 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      # ── 6. Prisma DB Push (SQLite only — skip for Turso in CI) ────────────────
-      # Push schema to the local SQLite dev.db so the build can reference it.
-      - name: Push Prisma schema to local SQLite
-        run: DATABASE_URL="file:./prisma/dev.db" npx prisma db push --skip-generate
-        continue-on-error: true
+      # ── 6. Prisma Migrate Deploy ──────────────────────────────────────────────
+      # Applies tracked migration files (prisma/migrations/) to the local SQLite
+      # dev.db so the build can reference the schema. Uses migrate deploy (not
+      # db push) — this is the production-safe command that runs migration history.
+      - name: Apply Prisma migrations
+        run: DATABASE_URL="file:./prisma/dev.db" npx prisma migrate deploy
+
 
       # ── 7. Next.js Build ──────────────────────────────────────────────────────
       - name: Build Next.js app
