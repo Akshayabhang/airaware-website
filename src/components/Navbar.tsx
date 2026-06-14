@@ -113,10 +113,10 @@ export default function Navbar({ onSearch, onLocate, isLoading = false }: Navbar
                             </div>
 
                             {/* Login Button */}
-                            <button className="bg-[#1288FC] hover:bg-blue-600 text-white text-sm font-medium px-5 py-2 rounded-md shadow-sm transition-colors flex items-center gap-2">
+                            <Link href="/auth" className="bg-[#1288FC] hover:bg-blue-600 text-white text-sm font-medium px-5 py-2 rounded-md shadow-sm transition-colors flex items-center gap-2">
                                 Login
                                 <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                            </button>
+                            </Link>
                         </div>
 
                         {/* Mobile Right: Theme + Hamburger */}
@@ -198,10 +198,10 @@ export default function Navbar({ onSearch, onLocate, isLoading = false }: Navbar
                         </div>
 
                         {/* Mobile Login */}
-                        <button className="w-full bg-[#1288FC] hover:bg-blue-600 text-white text-sm font-semibold px-5 py-2.5 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2">
+                        <Link href="/auth" onClick={() => setIsMobileMenuOpen(false)} className="w-full bg-[#1288FC] hover:bg-blue-600 text-white text-sm font-semibold px-5 py-2.5 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2">
                             Login
                             <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                        </button>
+                        </Link>
                     </div>
                 )}
             </nav>
