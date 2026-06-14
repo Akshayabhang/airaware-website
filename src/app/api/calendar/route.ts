@@ -1,69 +1,111 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { validateCity, validateYear, validatePollutant } from '@/utils/validator';
+import { checkRateLimit } from '@/lib/rateLimiter';
+import { apiCache } from '@/lib/apiCache';
+import { logger } from '@/utils/logger';
+
+function getClientIp(request: Request): string {
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  return request.headers.get('x-real-ip') || '127.0.0.1';
+}
 
 export async function GET(request: Request) {
-    const { searchParams } = new URL(request.url);
-    const city = searchParams.get('city');
-    const yearStr = searchParams.get('year');
-    const pollutant = searchParams.get('pollutant') || 'aqi';
+  const ip = getClientIp(request);
 
-    if (!city || !yearStr) {
-        return NextResponse.json({ error: 'City and year parameters are required' }, { status: 400 });
+  // 1. Rate Limiting Check
+  const rateLimit = checkRateLimit(ip);
+  if (!rateLimit.allowed) {
+    logger.warn('Rate limit exceeded for calendar request', { ip });
+    return NextResponse.json(
+      { error: 'Too Many Requests' },
+      {
+        status: 429,
+        headers: {
+          'X-RateLimit-Limit': String(rateLimit.limit),
+          'X-RateLimit-Remaining': String(rateLimit.remaining),
+          'X-RateLimit-Reset': String(rateLimit.resetSeconds),
+        },
+      }
+    );
+  }
+
+  const { searchParams } = new URL(request.url);
+  const rawCity = searchParams.get('city');
+  const rawYear = searchParams.get('year');
+  const rawPollutant = searchParams.get('pollutant');
+
+  // 2. Request Validation
+  const city = validateCity(rawCity);
+  const year = validateYear(rawYear);
+  const pollutant = validatePollutant(rawPollutant);
+
+  if (!city || !year) {
+    logger.warn('Invalid calendar parameters received', { rawCity, rawYear, ip });
+    return NextResponse.json({ error: 'Valid city and year parameters are required' }, { status: 400 });
+  }
+
+  // 3. Cache Check
+  const cacheKey = `calendar:${city}:${year}:${pollutant}`;
+  const cachedData = apiCache.get(cacheKey);
+  if (cachedData) {
+    logger.info('Serving calendar data from cache', { cacheKey });
+    return NextResponse.json(cachedData);
+  }
+
+  try {
+    const cityRecord = await prisma.city.findUnique({
+      where: { name: city }
+    });
+
+    if (!cityRecord) {
+      const emptyResult = { data: {} };
+      apiCache.set(cacheKey, emptyResult, 600); // Cache empty results for 10 minutes
+      return NextResponse.json(emptyResult);
     }
 
-    const year = parseInt(yearStr, 10);
-    if (isNaN(year)) {
-        return NextResponse.json({ error: 'Invalid year' }, { status: 400 });
-    }
+    const startDate = new Date(year, 0, 1);
+    const endDate = new Date(year + 1, 0, 1);
 
-    try {
-        const cityRecord = await prisma.city.findUnique({
-            where: { name: city }
-        });
-
-        if (!cityRecord) {
-            return NextResponse.json({ data: {} });
+    // Query historical records for the entire year
+    const records = await prisma.aqiRecord.findMany({
+      where: {
+        cityId: cityRecord.id,
+        timestamp: {
+          gte: startDate,
+          lt: endDate
         }
+      },
+      orderBy: {
+        timestamp: 'asc'
+      }
+    });
 
-        const startDate = new Date(year, 0, 1);
-        const endDate = new Date(year + 1, 0, 1);
+    const dailyData: Record<string, number> = {};
 
-        // Query historical records for the entire year
-        const records = await prisma.aqiRecord.findMany({
-            where: {
-                cityId: cityRecord.id,
-                timestamp: {
-                    gte: startDate,
-                    lt: endDate
-                }
-            },
-            orderBy: {
-                timestamp: 'asc'
-            }
-        });
+    records.forEach(record => {
+      const dateStr = record.timestamp.toISOString().split('T')[0];
+      const val = record[pollutant as keyof typeof record];
+      if (typeof val === 'number') {
+        if (dailyData[dateStr] === undefined) {
+          dailyData[dateStr] = val;
+        } else {
+          dailyData[dateStr] = Math.max(dailyData[dateStr], val);
+        }
+      }
+    });
 
-        // Grouping logic: We want one value per day. 
-        // Since recent 30 days have hourly data, we'll take the max value for that day to represent the worst reading.
-        const dailyData: Record<string, number> = {};
+    const result = { data: dailyData };
 
-        records.forEach(record => {
-            // Format as YYYY-MM-DD local time string equivalent
-            const dateStr = record.timestamp.toISOString().split('T')[0];
+    // Cache the query result for 10 minutes (600s)
+    apiCache.set(cacheKey, result, 600);
 
-            let val = record[pollutant as keyof typeof record];
-            if (typeof val === 'number') {
-                if (dailyData[dateStr] === undefined) {
-                    dailyData[dateStr] = val;
-                } else {
-                    // Take the maximum severity for the day if there are multiple recordings
-                    dailyData[dateStr] = Math.max(dailyData[dateStr], val);
-                }
-            }
-        });
-
-        return NextResponse.json({ data: dailyData });
-    } catch (error) {
-        console.error('Error fetching calendar data:', error);
-        return NextResponse.json({ error: 'Failed to fetch calendar data' }, { status: 500 });
-    }
+    return NextResponse.json(result);
+  } catch (error) {
+    logger.error('Error fetching calendar data', error);
+    return NextResponse.json({ error: 'Failed to fetch calendar data' }, { status: 500 });
+  }
 }
